@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Takealot Price Tracker
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1
-// @description  Adds a "Price History" button (via servaltracker.com) and a normalized rating to Takealot product pages.
+// @version      0.5.0
+// @description  Adds a "Price History" button (via servaltracker.com) and a Bayesian-adjusted rating to Takealot product pages.
 // @author       Murdock
 // @homepageURL  https://github.com/Murdock011/Takealot-Price-tracker
 // @match        https://www.takealot.com/*
@@ -41,9 +41,29 @@
         document.querySelectorAll('#' + BOX_ID).forEach((el) => el.remove());
     }
 
-    /** Takealot rating (0-5) -> normalized 0-5 stars on an 11-point scale. */
-    function normalizedRating(stars) {
-        return Math.round(((2 * stars + 1) / 11) * 5 * 10) / 10;
+    // Bayesian-adjusted rating (https://fulmicoton.com/posts/bayesian_rating/).
+    // A product's rating is treated as PRIOR_WEIGHT imaginary reviews sitting at
+    // PRIOR_MEAN, blended with its real reviews. Products with few reviews are
+    // pulled toward the prior; heavily reviewed products barely move.
+    const PRIOR_MEAN = 3.5; // assumed rating for a product with no reviews
+    const PRIOR_WEIGHT = 10; // strength of that assumption, in "reviews"
+
+    /** avg (0-5), count (>=0) -> Bayesian-adjusted rating on the same 0-5 scale. */
+    function bayesianRating(avg, count) {
+        const adjusted =
+            (PRIOR_WEIGHT * PRIOR_MEAN + avg * count) / (PRIOR_WEIGHT + count);
+        return Math.round(adjusted * 10) / 10;
+    }
+
+    /** Read "4.3 (140)" from a rating wrapper into { avg, count }. */
+    function parseRating(el) {
+        if (!el) return null;
+        const match = el.innerText.match(/([\d.]+)\s*(?:\((\d[\d,]*)\))?/);
+        if (!match) return null;
+        const avg = parseFloat(match[1]);
+        if (Number.isNaN(avg)) return null;
+        const count = match[2] ? parseInt(match[2].replace(/,/g, ''), 10) : 0;
+        return { avg, count };
     }
 
     function parseProductId() {
@@ -76,12 +96,18 @@
             'margin:8px 0;padding:8px 0;border-top:1px solid #eaeaea;' +
             'border-bottom:1px solid #eaeaea;font-size:16px;background:#fff;';
 
-        const ratingEl = document.querySelector(SELECTORS.rating);
-        const stars = ratingEl ? parseFloat(ratingEl.innerText) : NaN;
-        if (!Number.isNaN(stars)) {
+        const rating = parseRating(document.querySelector(SELECTORS.rating));
+        if (rating) {
             const line = document.createElement('div');
-            line.textContent = `Normalized rating: ${normalizedRating(stars)} / 5`;
             line.style.marginBottom = '6px';
+            if (rating.count > 0) {
+                const adjusted = bayesianRating(rating.avg, rating.count);
+                line.textContent =
+                    `Adjusted rating: ${adjusted} / 5 ` +
+                    `(${rating.avg} from ${rating.count} review${rating.count === 1 ? '' : 's'})`;
+            } else {
+                line.textContent = `Rating: ${rating.avg} / 5`;
+            }
             box.appendChild(line);
         }
 
