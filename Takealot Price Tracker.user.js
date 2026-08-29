@@ -1,108 +1,131 @@
 // ==UserScript==
 // @name         Takealot Price Tracker
 // @namespace    http://tampermonkey.net/
-// @version      0.3.5
-// @description  try to take over the world!
+// @version      0.4.0
+// @description  Adds a "Price History" button (via servaltracker.com) and a normalized rating to Takealot product pages.
 // @author       Murdock
+// @homepageURL  https://github.com/Murdock011/Takealot-Price-tracker
 // @match        https://www.takealot.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=takealot.com
 // @grant        none
+// @run-at       document-idle
 // ==/UserScript==
 
-
-(window.onload =function() {
+(function () {
     'use strict';
-    var targetElement = document.getElementById('Tracker');
-        if (targetElement) {
-           targetElement.remove()
-        } else {
-            console.error("Target element not found.");
-        }
-        targetElement = document.getElementById('line1');
-        if (targetElement) {
-           targetElement.remove()
-        } else {
-            console.error("Target element not found.");
-        }
-        targetElement = document.getElementById('line2');
-        if (targetElement) {
-           targetElement.remove()
-        } else {
-            console.error("Target element not found.");
-        }
-    setTimeout(createPriceHistoryButton, 800);
-})();
-(window.onresize =function() {
-        var targetElement = document.getElementById('Tracker');
-        if (targetElement) {
-           targetElement.remove()
-        } else {
-            console.error("Target element not found.");
-        }
-        targetElement = document.getElementById('line1');
-        if (targetElement) {
-           targetElement.remove()
-        } else {
-            console.error("Target element not found.");
-        }
-        targetElement = document.getElementById('line2');
-        if (targetElement) {
-           targetElement.remove()
-        } else {
-            console.error("Target element not found.");
-        }
 
-    setTimeout(createPriceHistoryButton, 800);
-})();
+    const BOX_ID = 'tpt-tracker';
+    const SELECTORS = {
+        price: '[class*="buybox-module_price"]',
+        rating: '[class*="rating-module_rating-wrapper"]',
+        reviews: '.reviews.cell.shrink',
+    };
 
-    // Function to create and append the button
-    function createPriceHistoryButton() {
-        const line1 = document.createElement("hr");
-        const line2 = document.createElement("hr");
-        const mybox = document.createElement("div");
-        line1.setAttribute("style","margin: 5px 0px 5px 0px;")
-        line2.setAttribute("style","margin: 5px 0px 5px 0px;")
-        mybox.setAttribute("style", " margin: 5px 0px 5px 0px; border-radius: 1px; font-size: 16px; border: 0px solid #000000; background-color:  #ffffff;");
-        line1.setAttribute("id", "line1");
-        line2.setAttribute("id", "line2");
-        mybox.setAttribute("id", "Tracker");
-        const TakealotRating = document.getElementsByClassName("rating-module_rating-wrapper_3Cogb")[0].innerText;
-        const ReviewAmount = document.getElementsByClassName("reviews cell shrink")[0].innerText.split(" ")[0];
-        //((((4.5*9)/(5*9)*10)+1)/11)*100
-        const rating = document.createElement("div");
-        //rating.innerHTML = TakealotRating*ReviewAmount;
-        rating.innerHTML ="Normalized Rating : " + Math.trunc( ((((TakealotRating*ReviewAmount)/(5*ReviewAmount)*10)+1)/11)*100)+"%";
-        const button = document.createElement("button");
-        button.innerHTML = "Price History";
-        //button.setAttribute("id", "Tracker");
-        button.addEventListener("click", openPriceHistory, false);
-        button.setAttribute("style", " padding: 12px 12px 12px 12px;width:100%; height:40px; font-size:1rem;margin: 5px 0px 5px 0px; border-radius: 0px; font-size: 16px; text-align: center; color: #4d4d4f; background-color: #eaeaea; ");
-
-        mybox.appendChild(rating);
-        mybox.appendChild(button);
-
-        const targetElement = document.querySelector(".buybox-module_price_2YUFa");
-        if (targetElement) {
-            targetElement.appendChild(line1);
-            targetElement.appendChild(mybox);
-            targetElement.appendChild(line2);
-
-        } else {
-            console.error("Target element not found.");
-        }
+    /** Remove any UI this script previously injected. */
+    function removeInjectedUI() {
+        document.querySelectorAll('#' + BOX_ID).forEach((el) => el.remove());
     }
 
-    // Function to open the price history window
+    /** Takealot rating (0-5) -> normalized 0-100% on an 11-point scale. */
+    function normalizedRating(stars) {
+        return Math.trunc(((2 * stars + 1) / 11) * 100);
+    }
+
+    function parseProductId() {
+        // e.g. https://www.takealot.com/some-product/PLID12345678
+        const match = location.pathname.match(/\/(PLID\d+)/i);
+        if (match) return match[1];
+        const parts = location.pathname.split('/').filter(Boolean);
+        return parts[parts.length - 1] || null;
+    }
+
     function openPriceHistory() {
-        const productId = document.documentURI.split("/")[4];
-        const url = `https://www.servaltracker.com/products/${productId}`;
-        const pop = window.open(url, "MsgWindow", "width=575,height=600,menubar=0,status=0,titlebar=0,toolbar=0");
-
-        if (!pop) {
-            console.error("Failed to open the price history window.");
+        const productId = parseProductId();
+        if (!productId) {
+            console.error('[TPT] Could not determine product id from URL.');
+            return;
         }
+        const url = `https://www.servaltracker.com/products/${productId}`;
+        const popup = window.open(
+            url,
+            'TptPriceHistory',
+            'width=575,height=600,menubar=0,status=0,titlebar=0,toolbar=0'
+        );
+        if (!popup) console.error('[TPT] Failed to open the price history window (popup blocked?).');
     }
 
+    function buildUI() {
+        const box = document.createElement('div');
+        box.id = BOX_ID;
+        box.style.cssText =
+            'margin:8px 0;padding:8px 0;border-top:1px solid #eaeaea;' +
+            'border-bottom:1px solid #eaeaea;font-size:16px;background:#fff;';
 
+        const ratingEl = document.querySelector(SELECTORS.rating);
+        const stars = ratingEl ? parseFloat(ratingEl.innerText) : NaN;
+        if (!Number.isNaN(stars)) {
+            const line = document.createElement('div');
+            line.textContent = `Normalized rating: ${normalizedRating(stars)}%`;
+            line.style.marginBottom = '6px';
+            box.appendChild(line);
+        }
 
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Price History';
+        button.style.cssText =
+            'width:100%;height:40px;padding:12px;font-size:1rem;text-align:center;' +
+            'color:#4d4d4f;background:#eaeaea;border:0;border-radius:0;cursor:pointer;';
+        button.addEventListener('click', openPriceHistory);
+        box.appendChild(button);
 
+        return box;
+    }
+
+    function inject() {
+        const price = document.querySelector(SELECTORS.price);
+        if (!price) return false;
+        if (document.getElementById(BOX_ID)) return true;
+        price.appendChild(buildUI());
+        return true;
+    }
+
+    /** Retry injection for a few seconds while the SPA renders the buybox. */
+    function tryInject(attempts = 20) {
+        if (inject() || attempts <= 0) return;
+        setTimeout(() => tryInject(attempts - 1), 300);
+    }
+
+    function refresh() {
+        removeInjectedUI();
+        tryInject();
+    }
+
+    // Initial run.
+    refresh();
+
+    // Re-run on SPA navigation (Takealot swaps pages without a full reload).
+    let lastPath = location.pathname;
+    const onNavigate = () => {
+        if (location.pathname === lastPath) return;
+        lastPath = location.pathname;
+        refresh();
+    };
+    window.addEventListener('popstate', onNavigate);
+    for (const method of ['pushState', 'replaceState']) {
+        const original = history[method];
+        history[method] = function () {
+            const result = original.apply(this, arguments);
+            onNavigate();
+            return result;
+        };
+    }
+
+    // Guard against the buybox re-rendering and dropping our box.
+    const observer = new MutationObserver(() => {
+        if (document.querySelector(SELECTORS.price) && !document.getElementById(BOX_ID)) {
+            tryInject(5);
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+})();
