@@ -103,8 +103,7 @@
             if (rating.count > 0) {
                 const adjusted = bayesianRating(rating.avg, rating.count);
                 line.textContent =
-                    `Adjusted rating: ${adjusted} / 5 ` +
-                    `(${rating.avg} from ${rating.count} review${rating.count === 1 ? '' : 's'})`;
+                    `Adjusted rating: ${adjusted} / 5 `;
             } else {
                 line.textContent = `Rating: ${rating.avg} / 5`;
             }
