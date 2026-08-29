@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Takealot Price Tracker
 // @namespace    http://tampermonkey.net/
-// @version      0.4.0
+// @version      0.4.1
 // @description  Adds a "Price History" button (via servaltracker.com) and a normalized rating to Takealot product pages.
 // @author       Murdock
 // @homepageURL  https://github.com/Murdock011/Takealot-Price-tracker
@@ -41,9 +41,9 @@
         document.querySelectorAll('#' + BOX_ID).forEach((el) => el.remove());
     }
 
-    /** Takealot rating (0-5) -> normalized 0-100% on an 11-point scale. */
+    /** Takealot rating (0-5) -> normalized 0-5 stars on an 11-point scale. */
     function normalizedRating(stars) {
-        return Math.trunc(((2 * stars + 1) / 11) * 100);
+        return Math.round(((2 * stars + 1) / 11) * 5 * 10) / 10;
     }
 
     function parseProductId() {
@@ -80,7 +80,7 @@
         const stars = ratingEl ? parseFloat(ratingEl.innerText) : NaN;
         if (!Number.isNaN(stars)) {
             const line = document.createElement('div');
-            line.textContent = `Normalized rating: ${normalizedRating(stars)}%`;
+            line.textContent = `Normalized rating: ${normalizedRating(stars)} / 5`;
             line.style.marginBottom = '6px';
             box.appendChild(line);
         }
