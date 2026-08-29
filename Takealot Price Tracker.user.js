@@ -16,10 +16,25 @@
 
     const BOX_ID = 'tpt-tracker';
     const SELECTORS = {
-        price: '[class*="buybox-module_price"]',
+        // The buybox is where we anchor the injected UI. Takealot is migrating
+        // its markup, so try a few selectors from most to least specific.
+        buybox: [
+            '.sf-buybox',
+            '[class*="buybox-offer-module_single-item"]',
+            '[class*="buybox-module_buybox"]',
+            '[class*="buybox-module_price"]',
+        ],
+        // First match on a product page is the main product's rating.
         rating: '[class*="rating-module_rating-wrapper"]',
-        reviews: '.reviews.cell.shrink',
     };
+
+    function findBuybox() {
+        for (const selector of SELECTORS.buybox) {
+            const el = document.querySelector(selector);
+            if (el) return el;
+        }
+        return null;
+    }
 
     /** Remove any UI this script previously injected. */
     function removeInjectedUI() {
@@ -83,10 +98,10 @@
     }
 
     function inject() {
-        const price = document.querySelector(SELECTORS.price);
-        if (!price) return false;
+        const buybox = findBuybox();
+        if (!buybox) return false;
         if (document.getElementById(BOX_ID)) return true;
-        price.appendChild(buildUI());
+        buybox.appendChild(buildUI());
         return true;
     }
 
@@ -123,7 +138,7 @@
 
     // Guard against the buybox re-rendering and dropping our box.
     const observer = new MutationObserver(() => {
-        if (document.querySelector(SELECTORS.price) && !document.getElementById(BOX_ID)) {
+        if (findBuybox() && !document.getElementById(BOX_ID)) {
             tryInject(5);
         }
     });
